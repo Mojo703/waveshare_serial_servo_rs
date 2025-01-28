@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod command;
+pub mod hardware;
+pub mod response;
+pub mod serial;
+pub mod servo;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+fn crc(packet: &[u8]) -> u8 {
+    !packet.iter().fold(0u8, |sum, &byte| sum.wrapping_add(byte))
 }
