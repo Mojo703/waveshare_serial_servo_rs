@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -178,19 +180,49 @@ impl Iterator for AddressRegionIter {
 			if self.index > self.last {
 				return None;
 			}
-
-			if let Some(next) = Address::n(self.index) {
+			
+			let address = Address::n(self.index);
+			self.index += 1;
+			if let Some(next) = address {
 				return Some(next);
 			}
-
-			self.index += 1;
 		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, Error)]
+pub struct DriverErrors {
+	errors: u8,
+}
+
+impl Display for DriverErrors {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let errors: Vec<String> = DriverError::VALUES.into_iter().filter(|&error| self.contains(error)).map(|error| format!("{error}")).collect();
+		write!(f, "DriverErrors: {errors:?}")
+	}
+}
+
+impl DriverErrors {
+	fn contains(self, error: DriverError) -> bool {
+		self.errors & error as u8 > 0
+	}
+
+	pub(crate) fn from_byte(value: u8) -> Option<Self> {
+		let errors = Self {
+			errors: value,
+		};
+
+		if !DriverError::VALUES.into_iter().any(|error| errors.contains(error)) {
+			return None;
+		}
+
+		Some(errors)
 	}
 }
 
 #[repr(u8)]
 #[derive(Debug, Error, Clone, Copy)]
-pub enum ServoError {
+pub enum DriverError {
     #[error("Input voltage out of allowed range.")]
     Voltage = 1,
     #[error("Received angle is invalid.")]
@@ -203,7 +235,7 @@ pub enum ServoError {
     OverLoad = 32,
 }
 
-impl ServoError {
+impl DriverError {
     const VALUES: [Self; 5] = [
         Self::Voltage,
         Self::Angle,
@@ -211,13 +243,6 @@ impl ServoError {
         Self::OverEle,
         Self::OverLoad,
     ];
-
-    pub(crate) fn from_byte(value: u8) -> Vec<ServoError> {
-        ServoError::VALUES
-            .into_iter()
-            .filter(|&error| value & error as u8 > 0)
-            .collect()
-    }
 }
 
 #[derive(Debug, Error)]
@@ -230,6 +255,7 @@ pub enum InstructionError {
     DataLength,
 }
 
+#[derive(Debug)]
 pub enum Instruction {
     Ping,
     Read(AddressRegion),
@@ -248,6 +274,10 @@ impl Instruction {
             Err(InstructionError::ReadRegion)
         }
     }
+
+	pub fn write_single(address: Address, value: u8) -> Result<Instruction, InstructionError> {
+		Self::write(address, Vec::from([value]))
+	}
 
     pub fn write(start: Address, data: Vec<u8>) -> Result<Instruction, InstructionError> {
         let Ok(length) = data.len().try_into() else {

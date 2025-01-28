@@ -2,13 +2,13 @@ use thiserror::Error;
 
 use crate::{
     crc,
-    hardware::{ServoError, ID},
+    hardware::{DriverError, DriverErrors, ID},
 };
 
 #[derive(Debug)]
 pub struct Response {
     pub id: ID,
-    pub errors: Vec<ServoError>,
+    pub errors: Option<DriverErrors>,
     pub payload: Vec<u8>,
 }
 
@@ -52,7 +52,7 @@ impl TryFrom<&[u8]> for Response {
         }
 
         // Parse the errors.
-        let error = ServoError::from_byte(error);
+        let error = DriverErrors::from_byte(error);
 
         // Collect the payload.
         let payload = Vec::from(&value[5..value.len() - 1]);

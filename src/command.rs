@@ -3,6 +3,7 @@ use crate::{
     hardware::{Instruction, ID},
 };
 
+#[derive(Debug)]
 pub struct Command {
     pub id: ID,
     pub instruction: Instruction,

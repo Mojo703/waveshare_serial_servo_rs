@@ -7,7 +7,8 @@ pub fn packet_tx_rx(
     port: &mut Box<dyn SerialPort>,
 ) -> Result<Option<Response>, std::io::Error> {
     let is_broadcast = matches!(transmit.id, ID::Broadcast);
-    port.write_all(&transmit.build())?;
+    let built = transmit.build();
+    port.write_all(&built)?;
 
     // Device does not respond to broadcast, so do not listen for response.
     if is_broadcast {
