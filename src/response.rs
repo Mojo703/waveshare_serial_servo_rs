@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
     crc,
-    hardware::{DriverError, DriverErrors, ID},
+    hardware::{DriverErrors, ID},
 };
 
 #[derive(Debug)]

@@ -86,7 +86,7 @@ pub enum Address {
 
     // SRAM. Read or Write.
     TorqueEnable = 40,
-    Acc = 41,
+    Acceleration = 41,
     GoalPositionL = 42,
     GoalPositionH = 43,
     GoalTimeL = 44,
@@ -118,7 +118,7 @@ impl Address {
             ID | BaudRate | MinAngleLimitL | MinAngleLimitH | MaxAngleLimitL | MaxAngleLimitH
             | CwDead | CcwDead | OfsL | OfsH | Mode | 
 			// SRAM
-			TorqueEnable | Acc | GoalPositionL
+			TorqueEnable | Acceleration | GoalPositionL
             | GoalPositionH | GoalTimeL | GoalTimeH | GoalSpeedL | GoalSpeedH | Lock)
 	}
 

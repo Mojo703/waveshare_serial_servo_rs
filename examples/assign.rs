@@ -5,39 +5,16 @@ extern crate waveshare_serial_servo;
 #[path = ".\\common\\lib.rs"]
 mod common;
 
-use std::io::stdin;
-
-use waveshare_serial_servo::{hardware::ID, servo::Servo};
-
-fn ask_id() -> ID {
-    loop {
-        print!("ID: ");
-        let mut input = String::new();
-        stdin()
-            .read_line(&mut input)
-            .expect("stdin read_line must work.");
-        let Ok(value) = input.trim().parse::<u8>() else {
-            println!("Invalid: not a unsigned 8bit integer.");
-            continue;
-        };
-        match ID::try_from(value) {
-            Err(e) => {
-                println!("Invalid: not a valid id. Error: {e}");
-                continue;
-            }
-            Ok(id) => return id,
-        }
-    }
-}
+use waveshare_serial_servo::servo::Servo;
 
 fn main() {
     let mut port = common::get_port();
 
     println!("Current ID?");
-    let current = ask_id();
+    let current = common::ask_id();
 
     println!("New ID?");
-    let new = ask_id();
+    let new = common::ask_id();
 
     let mut servo = Servo::new(current);
 
