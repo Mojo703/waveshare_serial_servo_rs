@@ -8,7 +8,7 @@ mod common;
 use std::{thread::sleep, time::Duration};
 
 use angle::Deg;
-use waveshare_serial_servo::servo::{MoveConfig, Servo};
+use waveshare_serial_servo::servo::{Acceleration, Assign, Position, Servo, Speed};
 
 fn main() {
     let mut port = common::get_port();
@@ -18,23 +18,20 @@ fn main() {
 
     let servo = Servo::new(id);
 
-    println!(
-        "Ping response: {:?}",
-        servo.ping(&mut port).expect("Servo must be avaliable.")
-    );
+    // println!(
+    //     "Ping response: {:?}",
+    //     servo.ping(&mut port).expect("Servo must be avaliable.")
+    // );
 
-    let config_a = MoveConfig {
-        acceleration: 0xff - 1,
-        position: 0x0000,
-        speed: 0x0fff,
-    };
-
-    let config_b = config_a.with_position(Deg(360.0));
+    let speed = Speed::new(1.0);
+    let acceleration = Acceleration::new(1.0);
+    let position_a = Assign::set_position_goal(Position::new(Deg(0.0)), speed, acceleration);
+    let position_b = Assign::set_position_goal(Position::new(Deg(360.0)), speed, acceleration);
 
     loop {
-        println!("response: {:?}", servo.write_move(config_a, &mut port));
+        println!("response: {:?}", servo.write(&position_a, &mut port));
         sleep(Duration::from_secs(3));
-        println!("response: {:?}", servo.write_move(config_b, &mut port));
+        println!("response: {:?}", servo.write(&position_b, &mut port));
         sleep(Duration::from_secs(3));
     }
 }

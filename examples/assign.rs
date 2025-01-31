@@ -22,7 +22,7 @@ fn main() {
     println!("Ping response: {response:?}");
 
     let response = servo
-        .assign_id(new, &mut port)
+        .write_id(new, &mut port)
         .expect("Servo must be avaliable.");
     println!("Assign response: {response:?}");
 

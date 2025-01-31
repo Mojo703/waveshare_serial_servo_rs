@@ -65,7 +65,7 @@ impl TryFrom<u8> for ID {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, enumn::N)]
+#[derive(Debug, Clone, Copy, enumn::N, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Address {
     // EEPROM. Read only.
     ModelL = 3,
@@ -143,6 +143,13 @@ impl AddressRegion {
         let length = 1;
 
         Self { start, length }
+    }
+
+    pub fn contains(self, value: Address) -> bool {
+        let start = self.start as u8;
+        let value = value as u8;
+        let end = start + self.length;
+        (start..end).contains(&value)
     }
 
     fn can_read(self) -> bool {

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, io};
+use std::io;
 
 use crate::{
     command::Command,
-    hardware::{Address, DriverErrors, Instruction, InstructionError, ID},
+    hardware::{Address, AddressRegion, DriverErrors, Instruction, InstructionError, ID},
     response::Response,
     serial,
 };
@@ -32,67 +32,78 @@ pub struct MoveConfig {
     pub speed: u16,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Order {
-    // /// Valid range [0, 254]
-    // acceleration: Option<u8>,
-    // /// Valid range [0, 4096) maps to [0, 360) degrees
-    // position: Option<u16>,
-    // /// Valid range [0, 4096)
-    // speed: Option<u16>,
-    values: HashMap<Address, u8>,
+#[derive(Debug, Clone)]
+pub struct Assign([Option<u8>; Assign::MAX_ADDRESS]);
+
+impl Default for Assign {
+    fn default() -> Self {
+        Self([None; Assign::MAX_ADDRESS])
+    }
 }
 
-impl Order {
-    pub fn with_acceleration(mut self, acceleration: Option<u8>) -> Self {
-        self.acceleration = acceleration;
-        self
+impl Assign {
+    const MAX_ADDRESS: usize = 56;
+
+    pub fn set_position_goal(position: Position, speed: Speed, acceleration: Acceleration) -> Self {
+        let mut order = Self::default();
+        order.set_acceleration(Some(acceleration));
+        order.set_position(Some(position));
+        order.set_speed(Some(speed));
+
+        // Set to make memory continuous.
+        order.set_raw(Address::GoalTimeL, Some(0));
+        order.set_raw(Address::GoalTimeH, Some(0));
+
+        order
     }
 
-    pub fn with_position_raw(mut self, position: Option<u16>) -> Self {
-        self.position = position;
-        self
+    pub fn set_acceleration(&mut self, acceleration: Option<Acceleration>) {
+        self.set_raw(Address::Acceleration, acceleration.map(|a| a.0));
     }
 
-    pub fn with_position<T: Angle<f32>>(self, angle: Option<T>) -> Self {
-        let position = angle.map(|angle| {
-            (angle.to_deg().as_value() * 4096.0 / 360.0)
-                .clamp(0.0, 4095.0)
-                .round() as u16
-        });
-        self.with_position_raw(position)
+    pub fn set_position(&mut self, position: Option<Position>) {
+        let (position_l, position_h) = split_word(position.map(|p| p.0));
+
+        self.set_raw(Address::GoalPositionL, position_l);
+        self.set_raw(Address::GoalPositionH, position_h);
     }
 
-    pub fn with_speed(mut self, speed: Option<u16>) -> Self {
-        self.speed = speed;
-        self
+    pub fn set_speed(&mut self, speed: Option<Speed>) {
+        let (speed_l, speed_h) = split_word(speed.map(|s| s.0));
+
+        self.set_raw(Address::GoalSpeedL, speed_l);
+        self.set_raw(Address::GoalSpeedH, speed_h);
     }
 
-    fn as_memory(self) -> [Option<u8>; 56] {
-        let memory = [None; 56];
-
-        memory
+    fn set_raw(&mut self, address: Address, value: Option<u8>) {
+        self.0[address as usize] = value;
     }
 
-    fn as_instructions(self) -> Vec<Result<Instruction, InstructionError>> {
-        self.as_memory()
-            .into_iter()
+    fn get_raw(&self, address: Address) -> Option<u8> {
+        self.0[address as usize]
+    }
+
+    fn get_instructions(&self) -> Vec<Result<Instruction, InstructionError>> {
+        // Collect the addresses into contiguous instructions
+        self.0
+            .iter()
+            .copied()
             .chain(std::iter::once(None))
             .enumerate()
             .fold(
-                (Vec::new(), None::<Vec<u8>>),
+                (Vec::new(), None::<(usize, Vec<u8>)>),
                 |(mut instructions, collected), (index, value)| match (collected, value) {
-                    (Some(mut collected), Some(value)) => {
+                    (Some((start, mut collected)), Some(value)) => {
                         collected.push(value);
-                        (instructions, Some(collected))
+                        (instructions, Some((start, collected)))
                     }
-                    (None, Some(value)) => (instructions, Some(Vec::<u8>::from([value]))),
+                    (None, Some(value)) => (instructions, Some((index, Vec::<u8>::from([value])))),
                     (None, None) => (instructions, None),
-                    (Some(collected), None) => {
-                        let start = Address::n(index as u8)
+                    (Some((start, collected)), None) => {
+                        let start = Address::n(start as u8)
                             .expect("as_memory must store valid memory addresses.");
-                        instructions.push(Instruction::write(start, collected.clone()));
-                        (instructions, Some(collected))
+                        instructions.push(Instruction::write(start, collected));
+                        (instructions, None)
                     }
                 },
             )
@@ -100,20 +111,80 @@ impl Order {
     }
 }
 
-impl MoveConfig {
-    fn as_write(self) -> Instruction {
-        let MoveConfig {
-            acceleration,
-            position,
-            speed,
-        } = self;
-        let [position_l, position_h] = position.to_le_bytes();
-        let [speed_l, speed_h] = speed.to_le_bytes();
+fn split_word(word: Option<u16>) -> (Option<u8>, Option<u8>) {
+    match word {
+        Some(value) => {
+            let [l, h] = value.to_le_bytes();
+            (Some(l), Some(h))
+        }
+        None => (None, None),
+    }
+}
 
-        let start = Address::Acceleration;
-        let data = Vec::from([acceleration, position_l, position_h, 0, 0, speed_l, speed_h]);
+#[derive(Debug, Error, Clone, Copy)]
+pub enum PropertyError {
+    #[error("The property is out of range.")]
+    OutOfRange,
+}
 
-        Instruction::write(start, data).expect("MoveConfig as_write must be valid.")
+#[derive(Debug, Clone, Copy)]
+pub struct Speed(u16);
+
+impl Speed {
+    const MIN: u16 = 0;
+    const MAX: u16 = 0xfff;
+
+    pub fn new(value: f32) -> Self {
+        let value = (value * (Self::MAX - Self::MIN) as f32) as u16 + Self::MIN;
+        Self(value)
+    }
+
+    pub fn new_raw(value: u16) -> Result<Self, PropertyError> {
+        (Self::MIN..=Self::MAX)
+            .contains(&value)
+            .then(|| Self(value))
+            .ok_or(PropertyError::OutOfRange)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Position(u16);
+
+impl Position {
+    const MIN: u16 = 0;
+    const MAX: u16 = 0xfff;
+
+    pub fn new<T: Angle<f32>>(position: T) -> Self {
+        let position = ((position.to_deg().as_value() * 4096.0 / 360.0).round() as u16)
+            .clamp(Self::MIN, Self::MAX);
+        Self(position)
+    }
+
+    pub fn new_raw(value: u16) -> Result<Self, PropertyError> {
+        (Self::MIN..=Self::MAX)
+            .contains(&value)
+            .then(|| Self(value))
+            .ok_or(PropertyError::OutOfRange)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Acceleration(u8);
+
+impl Acceleration {
+    const MIN: u8 = 0;
+    const MAX: u8 = 254;
+
+    pub fn new(acceleration: f32) -> Self {
+        let acceleration = (acceleration * (Self::MAX - Self::MIN) as f32) as u8 + Self::MIN;
+        Self(acceleration)
+    }
+
+    pub fn new_raw(value: u8) -> Result<Self, PropertyError> {
+        (Self::MIN..=Self::MAX)
+            .contains(&value)
+            .then(|| Self(value))
+            .ok_or(PropertyError::OutOfRange)
     }
 }
 
@@ -132,7 +203,7 @@ impl Servo {
         expect_response(serial::packet_tx_rx(ping, port))
     }
 
-    pub fn assign_id(
+    pub fn write_id(
         &mut self,
         new_id: ID,
         port: &mut Box<dyn SerialPort>,
@@ -147,22 +218,13 @@ impl Servo {
         Ok(response)
     }
 
-    pub fn write(&self, order: Order, port: &mut Box<dyn SerialPort>) -> Result<(), ServoError> {
-        for instruction in order.as_instructions() {
+    pub fn write(&self, assign: &Assign, port: &mut Box<dyn SerialPort>) -> Result<(), ServoError> {
+        for instruction in assign.get_instructions() {
             let instruction = instruction?;
             let command = Command::new(self.id, instruction);
             serial::packet_tx_rx(command, port)?;
         }
         Ok(())
-    }
-
-    pub fn write_move(
-        &self,
-        config: MoveConfig,
-        port: &mut Box<dyn SerialPort>,
-    ) -> Result<Response, ServoError> {
-        let command = Command::new(self.id, config.as_write());
-        expect_response(serial::packet_tx_rx(command, port))
     }
 }
 
