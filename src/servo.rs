@@ -2,7 +2,10 @@ use std::io;
 
 use crate::{
     command::Command,
-    hardware::{Address, AddressRegion, DriverErrors, Instruction, InstructionError, ID},
+    hardware::{
+        address::{self, WriteRegion},
+        DriverErrors, Instruction, ID,
+    },
     response::Response,
     serial,
 };
@@ -16,8 +19,6 @@ pub enum ServoError {
     IO(#[from] std::io::Error),
     #[error("Driver Error: {0}")]
     Driver(#[from] DriverErrors),
-    #[error("Instruction Error: {0}")]
-    Instruction(#[from] InstructionError),
     #[error("A response was expected, but none received.")]
     NoResponse,
 }
@@ -51,39 +52,34 @@ impl Assign {
         order.set_speed(Some(speed));
 
         // Set to make memory continuous.
-        order.set_raw(Address::GoalTimeL, Some(0));
-        order.set_raw(Address::GoalTimeH, Some(0));
+        order.set_word(address::GoalTime, Some(0));
 
         order
     }
 
     pub fn set_acceleration(&mut self, acceleration: Option<Acceleration>) {
-        self.set_raw(Address::Acceleration, acceleration.map(|a| a.0));
+        self.set_byte(address::Acceleration, acceleration.map(|a| a.0));
     }
 
     pub fn set_position(&mut self, position: Option<Position>) {
-        let (position_l, position_h) = split_word(position.map(|p| p.0));
-
-        self.set_raw(Address::GoalPositionL, position_l);
-        self.set_raw(Address::GoalPositionH, position_h);
+        self.set_word(address::GoalPosition, position.map(|p| p.0));
     }
 
     pub fn set_speed(&mut self, speed: Option<Speed>) {
-        let (speed_l, speed_h) = split_word(speed.map(|s| s.0));
-
-        self.set_raw(Address::GoalSpeedL, speed_l);
-        self.set_raw(Address::GoalSpeedH, speed_h);
+        self.set_word(address::GoalSpeed, speed.map(|s| s.0));
     }
 
-    fn set_raw(&mut self, address: Address, value: Option<u8>) {
-        self.0[address as usize] = value;
+    fn set_byte<A: address::ByteAddress>(&mut self, address: A, value: Option<u8>) {
+        self.0[address.index() as usize] = value;
     }
 
-    fn get_raw(&self, address: Address) -> Option<u8> {
-        self.0[address as usize]
+    fn set_word<A: address::WordAddress>(&mut self, address: A, value: Option<u16>) {
+        let (l, h) = split_word(value);
+        self.0[address.index_l() as usize] = l;
+        self.0[address.index_h() as usize] = h;
     }
 
-    fn get_instructions(&self) -> Vec<Result<Instruction, InstructionError>> {
+    fn get_instructions(&self) -> Vec<Instruction> {
         // Collect the addresses into contiguous instructions
         self.0
             .iter()
@@ -97,12 +93,12 @@ impl Assign {
                         collected.push(value);
                         (instructions, Some((start, collected)))
                     }
-                    (None, Some(value)) => (instructions, Some((index, Vec::<u8>::from([value])))),
+                    (None, Some(value)) => (instructions, Some((index, Vec::from([value])))),
                     (None, None) => (instructions, None),
                     (Some((start, collected)), None) => {
-                        let start = Address::n(start as u8)
-                            .expect("as_memory must store valid memory addresses.");
-                        instructions.push(Instruction::write(start, collected));
+                        let region = address::WriteRegion::new(start as u8, collected)
+                            .expect("as_memory must store valid memory regions");
+                        instructions.push(Instruction::write(region));
                         (instructions, None)
                     }
                 },
@@ -208,8 +204,8 @@ impl Servo {
         new_id: ID,
         port: &mut Box<dyn SerialPort>,
     ) -> Result<Response, ServoError> {
-        let instruction = Instruction::write_single(Address::ID, new_id.value())
-            .expect("ID Address must be writeable.");
+        let region = WriteRegion::one(address::ID, new_id.value());
+        let instruction = Instruction::write(region);
         let command = Command::new(self.id, instruction);
         let response = expect_response(serial::packet_tx_rx(command, port))?;
 
@@ -220,7 +216,6 @@ impl Servo {
 
     pub fn write(&self, assign: &Assign, port: &mut Box<dyn SerialPort>) -> Result<(), ServoError> {
         for instruction in assign.get_instructions() {
-            let instruction = instruction?;
             let command = Command::new(self.id, instruction);
             serial::packet_tx_rx(command, port)?;
         }

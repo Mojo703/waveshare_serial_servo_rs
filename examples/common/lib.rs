@@ -1,4 +1,4 @@
-use std::io::stdin;
+use std::io::{stdin, stdout, Write};
 
 use serialport::{SerialPort, SerialPortInfo};
 use waveshare_serial_servo::hardware::ID;
@@ -36,9 +36,11 @@ pub fn get_port() -> Box<dyn SerialPort> {
         .expect("Serial port must open.")
 }
 
+#[allow(unused)]
 pub fn ask_id() -> ID {
     loop {
         print!("ID: ");
+        let _ = stdout().flush();
         let mut input = String::new();
         stdin()
             .read_line(&mut input)
