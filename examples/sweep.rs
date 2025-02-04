@@ -2,7 +2,7 @@
 ///
 extern crate waveshare_serial_servo;
 
-#[path = ".\\common\\lib.rs"]
+#[path = "./common/lib.rs"]
 mod common;
 
 use std::{thread::sleep, time::Duration};
