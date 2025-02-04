@@ -11,6 +11,6 @@ Developed with:
 
 ## Examples
 
-The examples will automatically detect the Bus Servo Adapter (Based on "CH343" in the port product description). If this doesn't work, you may need to change the `common::is_valid_port` function.
+The examples will list the avaliable serial ports, and request the user to select one. The correct port can be chosen by disconnecting the driver board, and running the example again, to see it's corresponding entry.
 
 Each example can be run with a command like `cargo run --example ping`.
