@@ -22,7 +22,7 @@ pub fn get_port() -> Box<dyn SerialPort> {
     println!("Found a valid port: {:?}", port.port_name);
 
     serialport::new(port.port_name.clone(), baud_rate)
-        .timeout(Duration::from_millis(1))
+        .timeout(Duration::from_millis(5))
         .open()
         .expect("Serial port must open.")
 }
