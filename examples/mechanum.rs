@@ -1,4 +1,8 @@
-use waveshare_serial_servo::{hardware::ID, servo::Servo};
+use serialport::SerialPort;
+use waveshare_serial_servo::{
+    hardware::ID,
+    servo::{Servo, ServoError},
+};
 
 #[path = "./common/lib.rs"]
 mod common;
@@ -10,6 +14,17 @@ struct Body {
     back_right: Servo,
 }
 
+impl Body {
+    fn ping_all(&self, port: &mut Box<dyn SerialPort>) -> Result<(), ServoError> {
+        self.front_left.ping(port)?;
+        self.front_right.ping(port)?;
+        self.back_left.ping(port)?;
+        self.back_right.ping(port)?;
+
+        Ok(())
+    }
+}
+
 fn main() {
     let mut port = common::get_port();
 
@@ -19,4 +34,7 @@ fn main() {
         back_left: Servo::new(ID::single(3).unwrap()),
         back_right: Servo::new(ID::single(4).unwrap()),
     };
+
+    body.ping_all(&mut port)
+        .expect("Body must be set up with valid servos.");
 }
