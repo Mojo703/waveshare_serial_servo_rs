@@ -18,15 +18,10 @@ fn main() {
 
     let servo = Servo::new(id);
 
-    // println!(
-    //     "Ping response: {:?}",
-    //     servo.ping(&mut port).expect("Servo must be avaliable.")
-    // );
-
     let speed = Speed::new(1.0);
     let acceleration = Acceleration::new(1.0);
-    let position_a = Assign::set_position_goal(Position::new(Deg(0.0)), speed, acceleration);
-    let position_b = Assign::set_position_goal(Position::new(Deg(360.0)), speed, acceleration);
+    let position_a = Assign::new_position_goal(Position::new(Deg(0.0)), speed, acceleration);
+    let position_b = Assign::new_position_goal(Position::new(Deg(360.0)), speed, acceleration);
 
     loop {
         println!("response: {:?}", servo.write(&position_a, &mut port));

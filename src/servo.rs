@@ -43,11 +43,15 @@ impl Default for Assign {
 impl Assign {
     const MAX_ADDRESS: usize = 56;
 
-    pub fn set_position_goal(position: Position, speed: Speed, acceleration: Acceleration) -> Self {
-        let mut order = Self::default();
-        order.set_acceleration(Some(acceleration));
-        order.set_position(Some(position));
-        order.set_speed(Some(speed));
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn new_position_goal(position: Position, speed: Speed, acceleration: Acceleration) -> Self {
+        let mut order = Self::default()
+            .with(acceleration)
+            .with(position)
+            .with(speed);
 
         // Set to make memory continuous.
         order.set_word(address::GoalTime, Some(0));
@@ -55,23 +59,20 @@ impl Assign {
         order
     }
 
-    pub fn set_acceleration(&mut self, acceleration: Option<Acceleration>) {
-        self.set_byte(address::Acceleration, acceleration.map(|a| a.0));
+    pub fn with<T: AssignProperty>(mut self, property: T) -> Self {
+        property.apply_to(&mut self);
+        self
     }
 
-    pub fn set_position(&mut self, position: Option<Position>) {
-        self.set_word(address::GoalPosition, position.map(|p| p.0));
+    pub fn set<T: AssignProperty>(&mut self, property: T) {
+        property.apply_to(self);
     }
 
-    pub fn set_speed(&mut self, speed: Option<Speed>) {
-        self.set_word(address::GoalSpeed, speed.map(|s| s.0));
-    }
-
-    fn set_byte<A: address::ByteAddress>(&mut self, address: A, value: Option<u8>) {
+    pub fn set_byte<A: address::ByteAddress>(&mut self, address: A, value: Option<u8>) {
         self.0[address.index() as usize] = value;
     }
 
-    fn set_word<A: address::WordAddress>(&mut self, address: A, value: Option<u16>) {
+    pub fn set_word<A: address::WordAddress>(&mut self, address: A, value: Option<u16>) {
         let (l, h) = split_word(value);
         self.0[address.index_l() as usize] = l;
         self.0[address.index_h() as usize] = h;
@@ -115,6 +116,10 @@ fn split_word(word: Option<u16>) -> (Option<u8>, Option<u8>) {
     }
 }
 
+pub trait AssignProperty {
+    fn apply_to(self, assign: &mut Assign);
+}
+
 #[derive(Debug, Error, Clone, Copy)]
 pub enum PropertyError {
     #[error("The property is out of range.")]
@@ -141,6 +146,12 @@ impl Speed {
     }
 }
 
+impl AssignProperty for Speed {
+    fn apply_to(self, assign: &mut Assign) {
+        assign.set_word(address::GoalSpeed, Some(self.0));
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Position(u16);
 
@@ -162,6 +173,12 @@ impl Position {
     }
 }
 
+impl AssignProperty for Position {
+    fn apply_to(self, assign: &mut Assign) {
+        assign.set_word(address::GoalPosition, Some(self.0));
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Acceleration(u8);
 
@@ -179,6 +196,25 @@ impl Acceleration {
             .contains(&value)
             .then(|| Self(value))
             .ok_or(PropertyError::OutOfRange)
+    }
+}
+
+impl AssignProperty for Acceleration {
+    fn apply_to(self, assign: &mut Assign) {
+        assign.set_byte(address::Acceleration, Some(self.0));
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum Mode {
+    Position = 0,
+    Wheel = 1,
+}
+
+impl AssignProperty for Mode {
+    fn apply_to(self, assign: &mut Assign) {
+        assign.set_byte(address::Mode, Some(self as u8));
     }
 }
 
