@@ -1,11 +1,24 @@
 use serialport::SerialPort;
+use thiserror::Error;
 
-use crate::{command::Command, hardware::ID, response::Response};
+use crate::{
+    command::Command,
+    hardware::ID,
+    response::{self, Response},
+};
+
+#[derive(Debug, Error)]
+pub enum SerialError {
+    #[error("IO Error: {0}")]
+    IO(#[from] std::io::Error),
+    #[error("Response Error: {0}")]
+    Response(#[from] response::ResponseError),
+}
 
 pub fn packet_tx_rx(
     transmit: Command,
     port: &mut Box<dyn SerialPort>,
-) -> Result<Option<Response>, std::io::Error> {
+) -> Result<Option<Response>, SerialError> {
     let is_broadcast = matches!(transmit.id, ID::Broadcast);
     let built = transmit.build();
     port.write_all(&built)?;
@@ -22,7 +35,5 @@ pub fn packet_tx_rx(
     port.read_exact(&mut remain)?;
     receive.extend(remain);
 
-    Ok(Some(
-        Response::try_from(receive.as_slice()).expect("Received packet must be valid."),
-    ))
+    Ok(Some(Response::try_from(receive.as_slice())?))
 }

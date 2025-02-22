@@ -1,5 +1,3 @@
-use std::io;
-
 use crate::{
     command::Command,
     hardware::{
@@ -7,7 +5,7 @@ use crate::{
         DriverErrors, Instruction, ID,
     },
     response::Response,
-    serial,
+    serial::{self, SerialError},
 };
 use angle::Angle;
 use serialport::SerialPort;
@@ -15,8 +13,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ServoError {
-    #[error("IO Error: {0}")]
-    IO(#[from] std::io::Error),
+    #[error("Serial Error: {0}")]
+    Serial(#[from] SerialError),
     #[error("Driver Error: {0}")]
     Driver(#[from] DriverErrors),
     #[error("A response was expected, but none received.")]
@@ -207,9 +205,11 @@ impl Servo {
         let region = WriteRegion::one(address::ID, new_id.value());
         let instruction = Instruction::write(region);
         let command = Command::new(self.id, instruction);
-        let response = expect_response(serial::packet_tx_rx(command, port))?;
 
+        self.write_eeprom_lock(false, port)?;
+        let response = expect_response(serial::packet_tx_rx(command, port))?;
         self.id = new_id;
+        self.write_eeprom_lock(true, port)?;
 
         Ok(response)
     }
@@ -221,9 +221,23 @@ impl Servo {
         }
         Ok(())
     }
+
+    fn write_eeprom_lock(
+        &self,
+        locked: bool,
+        port: &mut Box<dyn SerialPort>,
+    ) -> Result<(), ServoError> {
+        let locked = if locked { 1 } else { 0 };
+        let region = WriteRegion::one(address::Lock, locked);
+        let instruction = Instruction::write(region);
+        let command = Command::new(self.id, instruction);
+        serial::packet_tx_rx(command, port)?;
+
+        Ok(())
+    }
 }
 
-fn expect_response(value: Result<Option<Response>, io::Error>) -> Result<Response, ServoError> {
+fn expect_response(value: Result<Option<Response>, SerialError>) -> Result<Response, ServoError> {
     match value {
         Err(e) => Err(e.into()),
         Ok(None) => Err(ServoError::NoResponse),
