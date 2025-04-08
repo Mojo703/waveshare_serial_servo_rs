@@ -50,12 +50,18 @@ fn main() {
         break;
     }
 
-    loop {
+    for _ in 0..1000 {
         println!(
-            "position: {:?}",
-            servo.read(ReadRegion::one(address::PresentPosition), &mut port)
+            "position: {}",
+            servo
+                .read(ReadRegion::one(address::PresentPosition), &mut port)
+                .unwrap()
+                .payload[0]
         );
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(10));
     }
+
+    assign.set(Speed::new_raw_unchecked(0));
+    servo.write(&assign, &mut port).unwrap();
 }
