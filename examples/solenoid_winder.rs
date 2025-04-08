@@ -5,10 +5,10 @@ extern crate waveshare_serial_servo;
 #[path = "./common/lib.rs"]
 mod common;
 
-use std::{io::stdin, str::FromStr};
+use std::{io::stdin, str::FromStr, thread, time::Duration};
 
 use waveshare_serial_servo::{
-    hardware::address,
+    hardware::address::{self, ReadRegion},
     servo::{Acceleration, Assign, Mode, Servo, Speed},
 };
 
@@ -46,5 +46,16 @@ fn main() {
         println!("speed {value} -> {:?}", speed);
         assign.set(speed);
         println!("response: {:?}", servo.write(&assign, &mut port));
+
+        break;
+    }
+
+    loop {
+        println!(
+            "position: {:?}",
+            servo.read(ReadRegion::one(address::PresentPosition), &mut port)
+        );
+
+        thread::sleep(Duration::from_millis(100));
     }
 }

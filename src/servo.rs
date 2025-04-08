@@ -1,7 +1,7 @@
 use crate::{
     command::Command,
     hardware::{
-        address::{self, WriteRegion},
+        address::{self, ReadRegion, WriteRegion},
         DriverErrors, Instruction, ID,
     },
     response::Response,
@@ -264,6 +264,16 @@ impl Servo {
             serial::packet_tx_rx(command, port)?;
         }
         Ok(())
+    }
+
+    pub fn read(
+        &self,
+        region: ReadRegion,
+        port: &mut Box<dyn SerialPort>,
+    ) -> Result<Response, ServoError> {
+        let read = Command::new(self.id, Instruction::Read(region));
+
+        Ok(expect_response(serial::packet_tx_rx(read, port))?)
     }
 
     fn write_eeprom_lock(
