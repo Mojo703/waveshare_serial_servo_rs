@@ -5,14 +5,14 @@ extern crate waveshare_serial_servo;
 #[path = "./common/lib.rs"]
 mod common;
 
-use std::io::stdin;
+use std::{io::stdin, str::FromStr};
 
 use waveshare_serial_servo::{
     hardware::address,
     servo::{Acceleration, Assign, Mode, Servo, Speed},
 };
 
-fn ask_speed() -> Option<i16> {
+fn ask<T: FromStr>() -> Option<T> {
     let mut input = String::new();
     stdin()
         .read_line(&mut input)
@@ -39,7 +39,7 @@ fn main() {
     assign.set_word(address::GoalTime, Some(0));
 
     loop {
-        let Some(value) = ask_speed() else {
+        let Some(value) = ask::<u32>() else {
             continue;
         };
         let speed = Speed::new_raw_unchecked(value as u16);

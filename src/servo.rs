@@ -134,7 +134,11 @@ impl Speed {
     const MAX: u16 = 0xfff;
 
     pub fn new(value: f32) -> Self {
-        let value = (value * (Self::MAX - Self::MIN) as f32) as u16 + Self::MIN;
+        let value = if value >= 0.0 {
+            (value * Self::MAX as f32) as u16
+        } else {
+            !((-value * Self::MAX as f32) as u16) + 1
+        };
         Self(value)
     }
 
@@ -143,6 +147,10 @@ impl Speed {
             .contains(&value)
             .then(|| Self(value))
             .ok_or(PropertyError::OutOfRange)
+    }
+
+    pub fn new_raw_unchecked(value: u16) -> Self {
+        Self(value)
     }
 }
 
