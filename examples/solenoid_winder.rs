@@ -7,6 +7,7 @@ mod common;
 
 use std::{io::stdin, str::FromStr, thread, time::Duration};
 
+use serialport::SerialPort;
 use waveshare_serial_servo::{
     hardware::address::{self, ReadRegion},
     servo::{Acceleration, Assign, Mode, Servo, Speed},
@@ -18,6 +19,13 @@ fn ask<T: FromStr>() -> Option<T> {
         .read_line(&mut input)
         .expect("stdin read_line must work.");
     input.trim().parse().ok()
+}
+
+fn read_position(servo: &Servo, port: &mut Box<dyn SerialPort>) -> u8 {
+    servo
+        .read(ReadRegion::one(address::PresentPosition), port)
+        .unwrap()
+        .payload[0]
 }
 
 fn main() {
@@ -49,6 +57,8 @@ fn main() {
 
         break;
     }
+
+    // let start = read_position(&servo, &mut port);
 
     for _ in 0..1000 {
         println!(
