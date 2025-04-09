@@ -165,7 +165,7 @@ pub struct Position(u16);
 
 impl Position {
     const MIN: u16 = 0;
-    const MAX: u16 = 0xfff;
+    pub const MAX: u16 = 0xfff;
 
     pub fn new<T: Angle<f32>>(position: T) -> Self {
         let position = ((position.to_deg().as_value() * 4096.0 / 360.0).round() as u16)

@@ -311,10 +311,17 @@ pub mod address {
                 .then(|| Self { start, length })
         }
 
-        pub fn one<W: ReadableAddress>(address: W) -> Self {
+        pub fn one_byte<W: ReadableAddress + ByteAddress>(address: W) -> Self {
             Self {
                 start: address.index(),
                 length: 1,
+            }
+        }
+
+        pub fn one_word<W: ReadableAddress + WordAddress>(address: W) -> Self {
+            Self {
+                start: address.index(),
+                length: 2,
             }
         }
     }

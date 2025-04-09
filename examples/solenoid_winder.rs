@@ -5,17 +5,21 @@ extern crate waveshare_serial_servo;
 #[path = "./common/lib.rs"]
 mod common;
 
+use std::time::Instant;
+
 use serialport::SerialPort;
 use waveshare_serial_servo::{
     hardware::address::{self, ReadRegion},
     servo::{Acceleration, Assign, Mode, Position, Servo, Speed},
 };
 
-fn read_position(servo: &Servo, port: &mut Box<dyn SerialPort>) -> u8 {
-    servo
-        .read(ReadRegion::one(address::PresentPosition), port)
+fn read_position(servo: &Servo, port: &mut Box<dyn SerialPort>) -> u16 {
+    let payload = servo
+        .read(ReadRegion::one_word(address::PresentPosition), port)
         .unwrap()
-        .payload[0]
+        .payload;
+
+    u16::from_le_bytes([payload[0], payload[1]])
 }
 
 type Millimeter = f32;
@@ -39,6 +43,8 @@ struct Settings<'a> {
 
 impl<'a> Settings<'a> {
     pub fn perform(&mut self) {
+        let start = Instant::now();
+
         // Set up the servos
         self.rotation
             .write(
@@ -50,7 +56,13 @@ impl<'a> Settings<'a> {
             )
             .expect("rotation servo setup must work.");
         self.linear
-            .write(&Assign::new().with(Mode::Position), self.port)
+            .write(
+                &Assign::new()
+                    .with(Mode::Position)
+                    .with(Speed::new(1.0))
+                    .with(Acceleration::new(1.0)),
+                self.port,
+            )
             .expect("linear servo setup must work.");
 
         let mut loop_index: u32 = 0;
@@ -58,6 +70,7 @@ impl<'a> Settings<'a> {
         let loops_per_layer = (self.end - self.start) / self.step;
 
         let mut previous_position = None;
+        let mut previous_layer = None;
 
         loop {
             // Check if the rotation servo has looped around. Assume the direction is positive.
@@ -68,16 +81,30 @@ impl<'a> Settings<'a> {
                 loop_index += 1;
             }
             previous_position = Some(rotation_position);
+            let partial = rotation_position as f32 / Position::MAX as f32;
 
             // Make sure we have not reached the layer limit
-            let layer_index = (loop_index as f32 / loops_per_layer) as u32;
+            let layer_index = ((loop_index as f32 + partial) / loops_per_layer) as u32;
             if layer_index >= self.wraps {
-                return;
+                break;
             }
+            if !previous_layer.is_some_and(|previous_layer| layer_index <= previous_layer) {
+                println!(
+                    "Started layer {}, with {} loops completed at {:.2?}.",
+                    layer_index + 1,
+                    loop_index + 1,
+                    start.elapsed()
+                );
+            }
+            previous_layer = Some(layer_index);
 
             // Update the linear arm
-            let linear_position =
-                (loop_index as f32 / loops_per_layer) % 1.0 * (self.end - self.start) + self.start;
+            let t = ((loop_index as f32 + partial) / loops_per_layer) % 1.0;
+            let linear_position = match layer_index % 2 {
+                0 => t * (self.end - self.start) + self.start,
+                1 => (1.0 - t) * (self.end - self.start) + self.start,
+                _ => unreachable!(),
+            };
             self.linear
                 .write(
                     &Assign::new().with((self.linear_map)(linear_position)),
@@ -85,46 +112,40 @@ impl<'a> Settings<'a> {
                 )
                 .expect("linear servo write position must work.");
         }
+
+        println!(
+            "Placed {} loop(s), over {} layer(s) in {:.2?}.",
+            loop_index + 1,
+            self.wraps,
+            start.elapsed()
+        );
     }
 }
 
 impl<'a> Drop for Settings<'a> {
     fn drop(&mut self) {
         self.rotation
-            .write(
-                &Assign::new()
-                    .with(Mode::Position)
-                    .with(Position::new_raw(0).unwrap()),
-                self.port,
-            )
+            .write(&Assign::new().with(Speed::new_raw(0).unwrap()), self.port)
             .expect("rotation servo stop must work.");
-        self.linear
-            .write(
-                &Assign::new()
-                    .with(Mode::Position)
-                    .with(Position::new_raw(0).unwrap()),
-                self.port,
-            )
-            .expect("linear servo stop must work.");
     }
 }
 
 fn main() {
     let mut port = common::get_port();
 
-    print!("Rotation servo ID: ");
+    print!("Rotation servo ");
     let rotation = Servo::new(common::ask_id());
-    print!("Linear servo ID: ");
+    print!("Linear servo ");
     let linear = Servo::new(common::ask_id());
 
     let mut settings = Settings {
-        start: 2.0,
-        end: 40.0,
+        start: 7.0,
+        end: 38.0,
         step: 0.45,
-        wraps: 1,
+        wraps: 5,
 
-        rotation_acceleration: Acceleration::new(0.1),
-        rotation_speed: Speed::new(0.1),
+        rotation_acceleration: Acceleration::new(1.0),
+        rotation_speed: Speed::new(0.3),
 
         rotation: &rotation,
         linear: &linear,
