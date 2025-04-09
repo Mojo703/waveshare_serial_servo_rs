@@ -226,6 +226,7 @@ impl AssignProperty for Mode {
     }
 }
 
+#[derive(Debug)]
 pub struct Servo {
     id: ID,
 }
